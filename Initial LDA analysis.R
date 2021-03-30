@@ -6,12 +6,12 @@ library(tidyr)
 library(tidyverse)
 
 
-### sortAnswers_function ###
+### sort_answers_function ###
 
 ### Input: original tibble with questions as columns and individual answers as rows (DF)
 ### Output: a vector of total answers sorted by question
 
-sortAnswers_function <- function(df){
+sort_answers_function <- function(df){
   ansVec = c()
   for(j in 1:dim(df)[2]){
     for (i in 1:dim(df)[1]){
@@ -22,12 +22,12 @@ sortAnswers_function <- function(df){
 }
 
 
-### topWords_function ###
+### top_words_function ###
 
 ### input: LDA output tibble with beta column
 ### output: tibble detailing each topic's top 10 words
 
-topWords_function <- function(df){
+top_words_function <- function(df){
   return(df %>%
            group_by(topic) %>%
            top_n(10, beta) %>%
@@ -35,11 +35,11 @@ topWords_function <- function(df){
            arrange(topic, -beta))
 }
 
-### plotTopWords_function ###
+### plot_top_words_function ###
 ### input: a tibble with each topics top words
 ### output: horizontal bar plots
 
-plotTopWords_function <- function(df){
+plot_top_words_function <- function(df){
   return(df %>% mutate(term = reorder_within(term, beta, topic)) %>%
            ggplot(aes(term, beta, fill = factor(topic))) +
            geom_col(show.legend = FALSE) +
@@ -53,10 +53,10 @@ plotTopWords_function <- function(df){
 ########### LOADING DATA ##############
 
 #loading in data
-surveyData = readxl::read_xlsx() #insert file path here
+survey_data = readxl::read_xlsx() #insert file path here
 
 ## selecting only comment box questions
-surveyData = surveyData %>% select(c(14, 22, 30, 40, 41, 43, 45, 46, 48))
+survey_data = survey_data %>% select(c(14, 22, 30, 40, 41, 43, 45, 46, 48))
 
 
 
@@ -69,17 +69,17 @@ surveyData = surveyData %>% select(c(14, 22, 30, 40, 41, 43, 45, 46, 48))
 ## document is sorted by appearance on the survey
 
 ## vector with each question repeated nrow times
-documentVector = c(rep(colnames(surveyData), each = dim(surveyData)[1]))
+document_vector = c(rep(colnames(survey_data), each = dim(survey_data)[1]))
 
 ## a vector with all answers sorted by question
-longSurveyAnswers = sortAnswers_function(surveyData)
+long_survey_answers = sort_answers_function(survey_data)
 
 ## converted DF with questions in one col and answers in the other 
-longSurveyDF = tibble(document = documentVector, text = longSurveyAnswers)
+long_survey_DF = tibble(document = document_vector, text = long_survey_answers)
 
 ## DF with each answer broken down by words and removed NA answers
 ## a two col matrix with questions in col 1 and individual words in col 2
-by_word = longSurveyDF %>%
+by_word = long_survey_DF %>%
   unnest_tokens(word, text) %>%
   remove_missing()
 
@@ -114,7 +114,7 @@ survey_topics_9 <- tidy(survey_lda_9, matrix = "beta")
 ## finding each topic's top words
 survey_topwords_9 = topWords_function(survey_topics_9)
 ## plotting top words
-plotTopWords_function(survey_topwords_9)
+plot_top_words_function(survey_topwords_9)
 
 
 
@@ -125,7 +125,7 @@ survey_topics_4 <- tidy(survey_lda_4, matrix = "beta")
 ## finding each topic's top words
 survey_topwords_4 = topWords_function(survey_topics_4)
 ## plotting top words
-plotTopWords_function(survey_topwords_4)
+plot_top_words_function(survey_topwords_4)
 
 
 
@@ -136,7 +136,7 @@ survey_topics_14 <- tidy(survey_lda_14, matrix = "beta")
 ## finding each topic's top words
 survey_topwords_14 = topWords_function(survey_topics_14)
 ## plotting top words
-plotTopWords_function(survey_topwords_14)
+plot_top_words_function(survey_topwords_14)
 
 
 
@@ -174,22 +174,22 @@ beta_spread %>%
 
 
 ## word counts per question
-word_counts %>% filter(document == documentVector[1]) %>%
+word_counts %>% filter(document == document_vector[1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*1)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*1)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*2)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*2)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*3)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*3)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*4)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*4)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*5)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*5)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*6)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*6)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*7)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*7)+1]) %>%
   arrange(desc(n))
-word_counts %>% filter(document == documentVector[(663*8)+1]) %>%
+word_counts %>% filter(document == document_vector[(663*8)+1]) %>%
   arrange(desc(n))
 
