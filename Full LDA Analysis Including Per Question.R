@@ -9,9 +9,21 @@ library(topicmodels)
 library(scales)
 
 
-#### convert_to_dtm Function ####
-## Input: 2x2 dataframe with questions and reponses - including NAs (df)
-## Output: a 3 column dataframe with document, word, and n occurances of word in document
+########### FUNCTIONS ##############
+
+#### cleaning_function ####
+## input: full response data
+## output: responses to a single question and uniquely numbered
+cleaning_function <- function(data){
+  data_cleaned = data %>% select(question, english) %>% 
+    transmute(document = question, text = english) %>% 
+    mutate(document = 1:663)
+}
+
+
+#### split_by_words Function ####
+## Input: 2x2 dataframe with questions and responses - including NAs (df)
+## Output: a 2 column dataframe with document, word, and n occurrences of word in document
 split_by_words_function <- function(df){
   
   by_word = df %>%
@@ -33,8 +45,7 @@ split_by_words_function <- function(df){
 ##        3 col tibble with document, word, n (output from split_by_words_function)
 ## Output: sparsity corrected DTM
 sparsity_correction_function <- function(dtm, sparcity = 0.95, word_counts){
-  dtm =survey_dtm
-  DTM_sc = removeSparseTerms(dtm, sparcity)
+  DTM_sc = dtm #was removeSparseTerms(dtm, sparcity) but that messes up any data
   DTM_sc_matrix = as.matrix(DTM_sc)
   Removethese = which(apply(DTM_sc_matrix, 1, function(x) {sum(x>0)<5|sum(x)<5}))
   
@@ -44,6 +55,90 @@ sparsity_correction_function <- function(dtm, sparcity = 0.95, word_counts){
   return(FullDTM)
 }
 
+#### LDA_prep_function ####
+## prepares a DTM for LDA analysis
+## Input: cleaned dataframe with two cols: question and response
+## Output: a DTM of fully cleaned responses
+## Nested funtions: split_by_words and sparsity_correction_function
+LDA_prep_function <- function(cleaned){
+  #removing NAs and breaking into words
+  word_counts = split_by_words_function(cleaned)
+  
+  ## converting to DTM
+  dtm = word_counts %>% cast_dtm(document, word, n)
+  
+  ##correcting for sparsity
+  FullDTM = sparsity_correction_function(dtm, word_counts = word_counts)
+  
+  return(FullDTM)
+}
+
+
+
+##### LDA_function ######
+## Input: topic values to test from kmin to kmax, testing and training DTMs 
+## Output: a plot of perplexity and returns the LDA analysis at ideal k
+LDA_function <- function(kmin=2, kmax, testingDTM, trainingDTM, questionNumber){
+  LDAout = NULL
+  perpl = NULL
+  for(k in 1:kmax){
+    LDAout[[k]] = LDA(trainingDTM, k+1)
+    perpl = rbind(perpl, c(k+1, perplexity(LDAout[[k]], newdata = testingDTM, control = list(seed = 29))))
+  }
+  plot(perpl[,1], perpl[,2], main = paste0("Perplexity, ", questionNumber))
+  idealK = which.min(perpl[,2])
+  return(LDAout[[idealK]])
+  
+}
+
+#### topic_plotting_function ####
+## input: a beta matrix from LDA analysis
+## output: topics plot
+topic_plotting_function <- function(betaMatrix, n){
+  betaMatrix %>%
+    group_by(topic) %>%
+    top_n(n, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta) %>%
+    mutate(term = reorder_within(term, beta, topic)) %>%
+    ggplot(aes(term, beta, fill = factor(topic)))+
+    geom_col(show.legend = FALSE)+
+    facet_wrap(~ topic, scales = "free") + 
+    coord_flip()+
+    scale_x_reordered()
+}
+
+
+##### individual_question_LDA #####
+## Input: which question number
+##        original data, 
+##        min for LDA analysis, max for LDA analysis, 
+##        testing/training split, 
+##        number of terms to plot
+## Output: LDA perplexity plot and topic plot from ideal k LDA analysis
+
+individual_question_LDA <- function(questionNumber, original_data = survey_data, kmin=2, kmax=10, testingSplit=0.9, n=10){
+  # aquiring data
+  data = original_data %>% filter(question == paste0("Question ", questionNumber))
+  # cleaning
+  cleaned = cleaning_function(data)
+  # convert to DTM
+  FullDTM = LDA_prep_function(cleaned)
+  
+  ## finding ideal number of topics
+  # determining test/training data
+  TestSet = sort(sample(1:nrow(FullDTM), floor(nrow(FullDTM)*testingSplit)))
+  DTMTest = FullDTM[TestSet,]
+  DTMTrain = FullDTM[-TestSet,]
+  
+  # running LDA
+  LDA = LDA_function(kmin = kmin, kmax = kmax, testingDTM = DTMTest, trainingDTM = DTMTrain, questionNumber = questionNumber)
+  # creating beta matrix
+  LDATopics = tidy(LDA, matrix = "beta")
+  # plotting
+  topic_plotting_function(LDATopics, n = n)
+  
+}
 
 
 
@@ -52,91 +147,60 @@ sparsity_correction_function <- function(dtm, sparcity = 0.95, word_counts){
 ########### LOADING AND CLEANING DATA ##############
 
 
-#loading in data
-survey_data = readxl::read_xlsx() #insert file here
-
-#creating a vector to identify what question is being answered
+# loading in data
+survey_data = readxl::read_xlsx() #insert file path here
+# creating a vector to identify what question is being answered
 questionsCol = rep(1:9, len = nrow(survey_data))
-
-#adding question id
+# adding question id
 survey_data = survey_data %>% mutate(question = paste0("Question ", questionsCol))
 
 
-#cleaning full survey answers to only have quesiton id (document) and response (text)
+
+
+#### Total LDA Analysis ####
+
+#cleaning full survey answers to only have question id (document) and response (text)
 cleaned_df = survey_data %>% select(question, english) %>% transmute(document = question, text = english)
-
 #removing NAs and breaking into words
-word_counts = split_by_words_function(cleaned_df)
-
-## converting to DTM
-survey_dtm <- word_counts %>%
-  cast_dtm(document, word, n)
-
-##correcting for sparsity
-FullDTM = sparsity_correction_function(survey_dtm, word_counts = word_counts)
+FullDTM = LDA_prep_function(cleaned_df)
 
 
-
-
-##### Testing ideal number of clusters - unclear if necessary as we know the number of questions #####
-
+##### 'Ideal' Number of Topics #####
 TestSet = sort(sample(1:nrow(FullDTM), floor(nrow(FullDTM)*.70)))
-DTM95Test = FullDTM[TestSet,]
-DTM95Train = FullDTM[-TestSet,]
-
-LDAout = NULL
-perpl = NULL
-for(k in 2:25){
-  LDAout[[k]] = LDA(DTM95Train, k)
-  perpl = rbind(perpl, c(k, perplexity(LDAout[[k]], newdata = DTM95Test, control = list(seed = 29))))
-}
-
-plot(perpl[,1], perpl[,2], main = "Perplexity") 
-
-
-k = which(perpl == min(perpl[,2]), arr.ind = TRUE)[1] +1
-Topics = tidy(LDAout[[k]], matrix = "beta")
-
-Topics %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered()
-
+DTMTest = FullDTM[TestSet,]
+DTMTrain = FullDTM[-TestSet,]
+LDA = LDA_function(kmin = 2, kmax = 25, testingDTM = DTMTest, trainingDTM = DTMTrain, questionNumber = "Total")
+# creating beta matrix
+LDATopics = tidy(LDA, matrix = "beta")
+# plotting
+topic_plotting_function(LDATopics, n = 10)
 
 
 
 ##### 9 Topic LDA #####
+
+
 ## All gamma visualization and analysis code comes from Chapter 6 of the textbook "Test Mining with R: A Tidy Approach" by Julia Silge and David Robinson
 ## https://www.tidytextmining.com/index.html
 
-
-## Analysis ##
-
 #running LDA
-LDA_9_topics = LDA(FullDTM, k = 9, control = list(seed = 299))
+LDA_9_topics = LDA(FullDTM, k = 9, control = list(seed = 29))
 
 #creating beta matrix for total document analysis
 Topics = tidy(LDA_9_topics, matrix = "beta")
 #creating gamma matrix for individual document analysis
 LDA_gamma = tidy(LDA_9_topics, matrix = "gamma")
 
-## determining which question assigns to what topic
 
+## determining which question assigns to what topic
 ## 3 col tibble with document, topic, and gamma value
 question_classification <- LDA_gamma %>%
   group_by(document) %>%
   slice_max(gamma) %>%
   ungroup()
 
-## 2 col tibble with docuement and topic
-question_topics <- question_classification%>%
+## 2 col tibble with document and topic
+question_topics <- question_classification %>%
   count(document, topic) %>%
   group_by(document) %>% 
   slice_max(n, n= 1) %>%
@@ -144,25 +208,9 @@ question_topics <- question_classification%>%
   transmute(consensus = document, topic)
 
 
-
-
-
-
 ## Visualization
-
-
 ## top words per topic plot
-Topics %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered()
+topic_plotting_function(Topics, n = 10)
 # related questions to topic for reference
 print(question_topics)
 
@@ -210,190 +258,19 @@ wrong_words <- assignments %>%
 wrong_words
 
 
-#removing NAs and breaking into words
-word_counts1 = split_by_words_function(question1)
-word_counts2 = split_by_words_function(question2)
-word_counts3 = split_by_words_function(question3)
-word_counts4 = split_by_words_function(question4)
-word_counts5 = split_by_words_function(question5)
-word_counts6 = split_by_words_function(question6)
-word_counts7 = split_by_words_function(question7)
-word_counts8 = split_by_words_function(question8)
-word_counts9 = split_by_words_function(question9)
-
-
-## converting to DTM
-survey_dtm1 <- word_counts1 %>%
-  cast_dtm(document, word, n)
-survey_dtm2 <- word_counts2 %>%
-  cast_dtm(document, word, n)
-survey_dtm3 <- word_counts3 %>%
-  cast_dtm(document, word, n)
-survey_dtm4 <- word_counts4 %>%
-  cast_dtm(document, word, n)
-survey_dtm5 <- word_counts5 %>%
-  cast_dtm(document, word, n)
-survey_dtm6 <- word_counts6 %>%
-  cast_dtm(document, word, n)
-survey_dtm7 <- word_counts7 %>%
-  cast_dtm(document, word, n)
-survey_dtm8 <- word_counts8 %>%
-  cast_dtm(document, word, n)
-survey_dtm9 <- word_counts9 %>%
-  cast_dtm(document, word, n)
-
-##correcting for sparsity
-FullDTM1 = sparsity_correction_function(survey_dtm1, word_counts = word_counts1)
-FullDTM2 = sparsity_correction_function(survey_dtm2, word_counts = word_counts2)
-FullDTM3 = sparsity_correction_function(survey_dtm3, word_counts = word_counts3)
-FullDTM4 = sparsity_correction_function(survey_dtm4, word_counts = word_counts4)
-FullDTM5 = sparsity_correction_function(survey_dtm5, word_counts = word_counts5)
-FullDTM6 = sparsity_correction_function(survey_dtm6, word_counts = word_counts6)
-FullDTM7 = sparsity_correction_function(survey_dtm7, word_counts = word_counts7)
-FullDTM8 = sparsity_correction_function(survey_dtm8, word_counts = word_counts8)
-FullDTM9 = sparsity_correction_function(survey_dtm9, word_counts = word_counts9)
-
-
-## LDA Analysis
-lda1 = LDA(FullDTM1, k = 6, control = list(seed = 29))
-lda2 = LDA(FullDTM2, k = 6, control = list(seed = 29))
-lda3 = LDA(FullDTM3, k = 6, control = list(seed = 29))
-lda4 = LDA(FullDTM4, k = 6, control = list(seed = 29))
-lda5 = LDA(FullDTM5, k = 6, control = list(seed = 29))
-lda6 = LDA(FullDTM6, k = 6, control = list(seed = 29))
-lda7 = LDA(FullDTM7, k = 6, control = list(seed = 29))
-lda8 = LDA(FullDTM8, k = 6, control = list(seed = 29))
-lda9 = LDA(FullDTM9, k = 6, control = list(seed = 29))
-
-## Beta Matrix
-Topics1 = tidy(lda1, matrix = "beta")
-Topics2 = tidy(lda2, matrix = "beta")
-Topics3 = tidy(lda3, matrix = "beta")
-Topics4 = tidy(lda4, matrix = "beta")
-Topics5 = tidy(lda5, matrix = "beta")
-Topics6 = tidy(lda6, matrix = "beta")
-Topics7 = tidy(lda7, matrix = "beta")
-Topics8 = tidy(lda8, matrix = "beta")
-Topics9 = tidy(lda9, matrix = "beta")
 
 
 
 
-Topics1 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 1")
+##### Individual Quesiton LDA #####
 
-Topics2 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 2")
-
-Topics3 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 3")
-
-Topics4 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 4")
-
-Topics5 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 5")
-
-Topics6 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 6")
-
-Topics7 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 7")
-
-Topics8 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 8")
-
-Topics9 %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
-  ggplot(aes(term, beta, fill = factor(topic)))+
-  geom_col(show.legend = FALSE)+
-  facet_wrap(~ topic, scales = "free") + 
-  coord_flip()+
-  scale_x_reordered() +
-  ggtitle("Question 9")
-
+individual_question_LDA(1)
+individual_question_LDA(2)
+individual_question_LDA(3)
+individual_question_LDA(4)
+individual_question_LDA(5)
+individual_question_LDA(6)
+individual_question_LDA(7)
+individual_question_LDA(8)
+individual_question_LDA(9)
 
