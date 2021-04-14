@@ -1,0 +1,419 @@
+---
+pagetitle: "Chapter 3: LDA"
+output: html_document
+---
+
+## Chapter 3: LDA
+
+### Section 3-1: Introduction to LDA
+
+Topic modelling is a useful first step when we wish to determine common themes among documents. Here, each document is an individual response to one of the nine open ended questions present in this survey. One of the topic modelling methods we will explore for this survey is Latent Dirichlet Allocation (LDA), which allows for each individual response to be a combination of topics rather than a single one.
+
+Since the number of topics for each question is unknown, we must find the ideal number of topics per question. This will be determined using perplexity with collapsed Gibbs Sampling. LDA will be run on a training subset of the initial data with topic numbers from 2 to 10 and then tested on the remaining data. The number of topics with the smallest perplexity will be chosen, as this provides maximum generalization.
+
+Running LDA on the full dataset with this ideal number of topics will be used to determine the theme of each topic and categorize each response to a topic. An advantage to LDA is that while we are assigning a response a singular topic, we are still aware of topic split within the response. This response categorization will be used to inform the sentiment analysis.
+
+Top words per topic is determined by a $\beta$ value, which is a per-topic probability of a specified word generating from that topic. Response assignment of topics uses a $\gamma$ value, which is a per-topic probability of specified document generating from that topic, the topic with the highest $\gamma$ value is what the response is assigned.
+
+
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+## LOADING IN LIBRARIES
+library(topicmodels)
+library(tidytext)
+library(lsa)
+library(tidyr)
+library(tidyverse)
+library(tm)
+library(topicmodels)
+library(scales)
+set.seed(29)
+```
+
+### Section 3-2: Functions
+
+<b> cleaning_function </b>
+
+Cleans a translated dataframe down to just responses in English and the internal ID  
+Input: full (translated) survey data  
+Output: responses to a single question and uniquely numbered via response id  
+
+```{r}
+cleaning_function <- function(data){
+  return(data %>% select(c_1, english) %>% 
+    transmute(document = c_1, text = english))
+}
+```
+
+<b> split_by_words </b>
+
+Splits the responses into individual words, removes stop_words, and counts the number of occurrences of words per response
+As of right now (Apr 14th), there are no edits to the stop_words. This may change through further analysis.
+Input: 2x2 dataframe with response ID and responses - including NAs (df)
+Output: a 2 column dataframe with document, word, and n occurrences of word in document
+
+```{r}
+split_by_words_function <- function(df){
+  
+  by_word = df %>%
+    unnest_tokens(word, text) %>%
+    remove_missing()            
+  
+  word_counts <- by_word %>%
+    anti_join(stop_words) %>%
+    count(document, word, sort = TRUE) %>%
+    ungroup()
+  
+  return(word_counts)
+}
+```
+
+<b> sparsity_correction_function </b>
+
+A function that removes sparse terms from the inputted DTM. Short responses (i.e. responses less than 5 words or characters in length) are consciously left in as many responses fit this criteria.
+Input: DTM
+sparsity percentage with default = 0.95
+3 col tibble with document, word, n (output from split_by_words_function)
+Output: sparsity corrected DTM
+
+```{r}
+sparsity_correction_function <- function(dtm, sparcity = 0.95, word_counts){
+  DTM_sc = removeSparseTerms(dtm, sparcity)
+  DTM_sc_matrix = as.matrix(DTM_sc)
+  
+  FullDTM = word_counts %>%
+    cast_dtm(document, word, n)
+  
+  return(FullDTM)
+}
+```
+
+<b> LDA_prep_function </b>
+
+Prepares a DTM for LDA analysis
+Input: cleaned dataframe with two cols: question and response
+Output: a DTM of fully cleaned responses
+
+
+```{r}
+
+LDA_prep_function <- function(cleaned){
+  #removing NAs and breaking into words
+  word_counts = split_by_words_function(cleaned)
+  
+  ## converting to DTM
+  dtm = word_counts %>% cast_dtm(document, word, n)
+  
+  ##correcting for sparsity
+  FullDTM = sparsity_correction_function(dtm, word_counts = word_counts)
+  
+  return(FullDTM)
+}
+```
+
+<b> LDA_function </b>
+
+Runs LDA from kmin to kmax to determine ideal topic number k
+Input: topic values to test from kmin to kmax
+testing and training DTMs
+question number
+Output: a plot of perplexity and returns the LDA analysis at ideal k
+
+```{r}
+LDA_function <- function(kmin=2, kmax=10, testingDTM, trainingDTM, questionNumber){
+  LDAout = NULL
+  perpl = NULL
+  for(k in 1:kmax){
+    LDAout[[k]] = LDA(trainingDTM, k+1)
+    perpl = rbind(perpl, c(k+1, perplexity(LDAout[[k]], newdata = testingDTM, 
+                                           control = list(seed = 29))))
+  }
+  plot(perpl[,1], perpl[,2], main = paste0("Perplexity, Question ", questionNumber))
+  idealK = which.min(perpl[,2])
+  return(idealK+1)
+  
+}
+```
+
+<b> individual_question_LDA </b>
+
+Runs LDA on a specified question
+Input: which question number
+original data, 
+min for LDA analysis, max for LDA analysis, 
+testing/training split
+Output: LDA perplexity plot and ideal k LDA analysis
+
+```{r}
+individual_question_LDA <- function(questionNumber, original_data = survey_data, kmin=2, 
+                                    kmax=10, testingSplit=0.9){
+  # acquiring data
+  data = original_data %>% filter(question == paste0("Question ", questionNumber))
+  # cleaning
+  cleaned = cleaning_function(data)
+  # convert to DTM
+  FullDTM = LDA_prep_function(cleaned)
+  
+  ## finding ideal number of topics
+  # determining test/training data
+  TestSet = sort(sample(1:nrow(FullDTM), floor(nrow(FullDTM)*testingSplit)))
+  DTMTest = FullDTM[TestSet,]
+  DTMTrain = FullDTM[-TestSet,]
+  
+  # running LDA
+  k = LDA_function(kmin = kmin, kmax = kmax, testingDTM = DTMTest, trainingDTM = DTMTrain,
+                   questionNumber = questionNumber)
+  LDA = LDA(FullDTM, k)
+  return(LDA)
+}
+```
+
+<b> topic_plotting_function </b>
+
+Plots top n words from each topic
+Input: a beta matrix from LDA analysis
+n top words
+question number
+Output: topics plot, with n top terms
+
+```{r}
+topic_plotting_function <- function(LDA, n, questionNumber){
+  betaMatrix = tidy(LDA, matrix = "beta")
+  betaMatrix %>%
+    group_by(topic) %>%
+    top_n(n, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta) %>%
+    mutate(term = reorder_within(term, beta, topic)) %>%
+    ggplot(aes(term, beta, fill = factor(topic)))+
+    geom_col(show.legend = FALSE)+
+    facet_wrap(~ topic, scales = "free") + 
+    coord_flip()+
+    scale_x_reordered()+
+    ggtitle(paste0("Topics for Question ", questionNumber))
+}
+```
+
+<b> classify_responses </b>
+
+Assigns each response a topic based on highest $\gamma$ value
+Input: LDA
+Output: 3 col tibble with response ID
+associated topic
+gamma value
+
+```{r}
+classify_responses <- function(LDA){
+  #creating a gamma matrix
+  LDA_gamma = tidy(LDA, matrix = "gamma")
+  ## determining which answer assigns to what topic
+  question_classification <- LDA_gamma %>%
+    group_by(document) %>%
+    slice_max(gamma) %>%
+    ungroup()
+  
+  return(question_classification)
+}
+```
+
+
+<b> determine_missing_ans </b>
+
+Due to cleaning, some responses are lost. This is to manually check the missing answers to see if any answer of value is lost (i.e. anything more informative that "no"/"n/a" etc.)
+Input: question classification tibble
+question number
+survey data with NAs removed
+Output: response IDs that are not present in topic analysis
+
+```{r}
+determine_missing_ans <- function(question_classification, questionNumber, survey_data){
+  question_filter = as.character(paste0("Question ", questionNumber))
+  final_responses = question_classification$document
+  actual_responses = survey_data  %>%filter(question == question_filter)
+  missing_values = setdiff(actual_responses$c_1, final_responses)
+  return(missing_values)                                  
+}
+```
+
+### Section 3-3: Data Loading and Cleaning
+
+To prep this data for LDA analysis, it will go through multiple steps of cleaning. First, as seen below, the response must be attached to which question it is answering. 
+
+The rest of the cleaning and preparation are primarily done in individual_question_LDA. All of the responses are filtered down to only those answering a specified question, then is sent to cleaning_function which removes all columns but Internal ID and the response in English. Now that the data has been cleaned, it can now be prepared for LDA. To begin the preparation (LDA_prep_function), blank responses are removed and the remaining responses are broken down into single word chunks. Here, common filler words are removed via stop_words (tidytext). These words were not editted in any way for this edition, however this may change with further analysis. This data is then converted to a DTM and corrected for sparsity.
+
+```{r, message = FALSE}
+########### LOADING AND CLEANING DATA ##############
+
+
+# loading in data
+survey_data = readxl::read_xlsx() #insert file here
+# creating a vector to identify what question is being answered
+questions = c(10, 17, 19, 22, 23, 25, 27, 28, 30)
+questionsCol = rep(questions, len = nrow(survey_data))
+# adding question id
+survey_data = survey_data %>% mutate(question = paste0("Question ", questionsCol))
+```
+
+### Section 3-4: Individual LDAs
+
+As we do not know the number of different subjects across all responses for each question, multiple LDAs with a different number of topics will be trained and tested for each question.
+
+There is a testing/training split of 90% for all questions, and perplexity will be the determining factor for number of topics. The perplexity function is based on collapsed Gibbs Sampling and a lower perplexity indicates increased generalization. As such, the number of topics with the lowest perplexity will be chosen.
+
+From there, a full LDA will be run and the top words from each topic will be analyzed to determine the theme. Top words are dictated by a $\beta$ probability, which corresponds to the probability of a word generating from said topic. In addition to topic interpretation, we can also assign responses back to a topic via a $\gamma$ probability, which is the probability of that response generating from that topic. There are gamma probabilities for every topic assigned to each response and the response is assigned the topic with the highest $\gamma$ value.
+
+No analysis of individual response topics will be done in this chapter as it is only of use here to inform our sentiment analysis.
+
+#### Question 10 LDA
+
+
+```{r question1, message = FALSE, warning = FALSE, cache = TRUE}
+question1 = individual_question_LDA(10)
+topic_plotting_function(question1, n = 10, questionNumber = 10)
+question1 = classify_responses(question1)
+```
+
+Interpretation: 
+The topics from this question are split fairly clearly between training and tools. Topic 1 discusses training and access to MS Office and additional software. Topic 2 details tools, like monitors, laptops, scanners, and other equipment that employees would appreciate access to. 
+
+#### Question 17 LDA
+
+
+```{r question2, message = FALSE, warning = FALSE, cache = TRUE}
+question2 = individual_question_LDA(17)
+topic_plotting_function(question2, n = 10, questionNumber = 17)
+question2 = classify_responses(question2)
+```
+
+Interpretation: 
+This question is a great example of why LDA is not always useful, if there is only one topic of discussion. There is extreme overlap in these topics, indicating only one theme/topic for these responses. Based on the top words of both topics, it appears like there is a variety of preferred communication methods and that it may depend on the situation. 
+
+#### Question 19 LDA
+
+
+```{r question3, message = FALSE, warning = FALSE, cache = TRUE}
+question3 = individual_question_LDA(19)
+topic_plotting_function(question3, n = 10, questionNumber = 19)
+question3 = classify_responses(question3)
+```
+
+Interpretation: 
+Here there appears to be two distinct topics. Topic 1 indicates that deadlines, workloads, and resources are an issue, whereas Topic 2 details wait times and decisions, as well as a lack of information. Management is also a large indicator in Topic 2, although it is unclear from this plot if that is referring to time management or senior management.
+
+#### Question 22 LDA
+
+
+```{r question4, message = FALSE, warning = FALSE, cache = TRUE}
+question4 = individual_question_LDA(22)
+topic_plotting_function(question4, n = 10, questionNumber = 22)
+question4 = classify_responses(question4)
+```
+
+Interpretation:
+Topic 1 relates to policies dictating security and/or travel, in addition to information. Topic 2 indicates difficulties with requests, procurement, Winfast, and other systems.
+
+#### Question 23 LDA
+
+
+```{r question5, message = FALSE, warning = FALSE, cache = TRUE}
+question5 = individual_question_LDA(23)
+topic_plotting_function(question5, n = 10, questionNumber = 23)
+question5 = classify_responses(question5)
+```
+
+Interpretation:
+Both of these topics are similar, however Topic 1 focuses more on providing information or services and Topic 2 focuses on pandemic support and security.
+
+#### Question 25 LDA
+
+
+```{r question6, message = FALSE, warning = FALSE, cache = TRUE}
+question6 = individual_question_LDA(25)
+topic_plotting_function(question6, n = 10, questionNumber = 25)
+question6 = classify_responses(question6)
+```
+
+Interpretation:
+This again, like Question 17, appears to be a one topic question. Both topics detail answering questions or responding to requests in a timely manner.
+
+#### Question 27 LDA
+
+
+```{r question7, message = FALSE, warning = FALSE, cache = TRUE}
+question7 = individual_question_LDA(27)
+topic_plotting_function(question7, n = 10, questionNumber = 27)
+question7 = classify_responses(question7)
+```
+
+Interpretation:
+Topic 1 consists of staff support and quick responses, also with a focus on teams/coworkers, as team and staff are both mentioned. Topic 2 is similar but with more of a focus on security, although support and service are also mentioned. Like Topic 1, there is also a team focus, in addition to individual callouts shown as redacted. 
+
+
+#### Question 28 LDA
+
+```{r question8, message = FALSE, warning = FALSE, cache = TRUE}
+question8 = individual_question_LDA(28)
+# n = 15 here to allow for more unique words to be displayed
+topic_plotting_function(question8, n = 15, questionNumber = 28)
+question8 = classify_responses(question8)
+```
+
+Interpretation:
+Topic 1 relates to COVID-19 restrictions and the associated difficulties. Topic 2 details communication hardships when transitioning from in person communication to phone calls and MS Teams. 
+
+#### Ninth Question LDA
+
+```{r question9, message = FALSE, warning = FALSE, cache = TRUE}
+
+question9 = individual_question_LDA(30)
+topic_plotting_function(question9, n = 10, questionNumber = 30)
+question9 = classify_responses(question9)
+```
+
+Interpretation:
+Once again, there is a clear split between these topics. Topic 1 focuses on the administrative side of things, discussing FAB, CRA, and services. Topic 2 relates more to people, with employees, management, and team being common words. It is unclear though whether these comments are positive or negative and this will be explored with our sentiment analysis.
+
+```{r, include = FALSE, message = FALSE, warning = FALSE}
+## writing CSVs for further analysis with response ID/topic association
+write.csv(question1,file="Question 1 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question2,file="Question 2 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question3,file="Question 3 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question4,file="Question 4 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question5,file="Question 5 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question6,file="Question 6 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question7,file="Question 7 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question8,file="Question 8 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question9,file="Question 9 Response Topics LDA.csv", row.names = FALSE)
+
+
+
+#removing NAs from initial dataset
+removed_missing_sd = survey_data %>% remove_missing(vars = "english")
+
+#finding uninformative answers that were lost to cleaning (ex. no, n/a, nope, etc.)
+missing1 = determine_missing_ans(question1, 1, removed_missing_sd)
+missing2 = determine_missing_ans(question2, 2, removed_missing_sd)
+missing3 = determine_missing_ans(question3, 3, removed_missing_sd)
+missing4 = determine_missing_ans(question4, 4, removed_missing_sd)
+missing5 = determine_missing_ans(question5, 5, removed_missing_sd)
+missing6 = determine_missing_ans(question6, 6, removed_missing_sd)
+missing7 = determine_missing_ans(question7, 7, removed_missing_sd)
+missing8 = determine_missing_ans(question8, 8, removed_missing_sd)
+missing9 = determine_missing_ans(question9, 9, removed_missing_sd)
+
+write.csv(missing1,file="Question 1 Missing Responses.csv", row.names = FALSE)
+write.csv(missing2,file="Question 2 Missing Responses.csv", row.names = FALSE)
+write.csv(missing3,file="Question 3 Missing Responses.csv", row.names = FALSE)
+write.csv(missing4,file="Question 4 Missing Responses.csv", row.names = FALSE)
+write.csv(missing5,file="Question 5 Missing Responses.csv", row.names = FALSE)
+write.csv(missing6,file="Question 6 Missing Responses.csv", row.names = FALSE)
+write.csv(missing7,file="Question 7 Missing Responses.csv", row.names = FALSE)
+write.csv(missing8,file="Question 8 Missing Responses.csv", row.names = FALSE)
+write.csv(missing9,file="Question 9 Missing Responses.csv", row.names = FALSE)
+```
+
+### Section 3-5: Limitations of LDA
+
+LDA is better suited towards large documents, meaning it is not an ideal clustering algorithm for the short answers commonly seen in surveys. This is not a large concern here, as it still produced reasonable results and these results are being compared to the results of the LSA and word2vec clustering as well. Also, as seen in some of the interpretations, it cannot have less than two topics which clutters and unnecessarily splits a group of responses with a single theme. 
+
+In addition, LDA does not account for sentiment, as it is a topic modelling method. This affects the above analysis as we cannot see the intention behind this topic. This could allow for many responses discussing the same topic with both positive and negative feelings about it being grouped together. To account for this, these topic clusters, as well as the results from LSA and word2vec clustering, are being used in tandem with sentiment analysis (see Chapter 5) to provide a complete picture of the data.
+
