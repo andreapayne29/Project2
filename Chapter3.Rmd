@@ -1,11 +1,13 @@
 ---
-pagetitle: "Chapter 3: LDA"
-output: html_document
+pagetitle: "APChapter 3"
+output:
+  html_document: default
+  pdf_document: default
 ---
 
-## Chapter 3: LDA
+# Chapter 3: LDA
 
-### Section 3-1: Introduction to LDA
+## Section 3-1: Introduction to LDA
 
 Topic modelling is a useful first step when we wish to determine common themes among documents. Here, each document is an individual response to one of the nine open ended questions present in this survey. One of the topic modelling methods we will explore for this survey is Latent Dirichlet Allocation (LDA), which allows for each individual response to be a combination of topics rather than a single one.
 
@@ -29,7 +31,7 @@ library(scales)
 set.seed(29)
 ```
 
-### Section 3-2: Functions
+## Section 3-2: Functions
 
 <b> cleaning_function </b>
 
@@ -234,7 +236,7 @@ determine_missing_ans <- function(question_classification, questionNumber, surve
 }
 ```
 
-### Section 3-3: Data Loading and Cleaning
+## Section 3-3: Data Loading and Cleaning
 
 To prep this data for LDA analysis, it will go through multiple steps of cleaning. First, as seen below, the response must be attached to which question it is answering. 
 
@@ -245,7 +247,7 @@ The rest of the cleaning and preparation are primarily done in individual_questi
 
 
 # loading in data
-survey_data = readxl::read_xlsx() #insert file here
+survey_data = readxl::read_xlsx("masterResponse.xlsx")
 # creating a vector to identify what question is being answered
 questions = c(10, 17, 19, 22, 23, 25, 27, 28, 30)
 questionsCol = rep(questions, len = nrow(survey_data))
@@ -263,7 +265,7 @@ From there, a full LDA will be run and the top words from each topic will be ana
 
 No analysis of individual response topics will be done in this chapter as it is only of use here to inform our sentiment analysis.
 
-#### Question 10 LDA
+### Question 10 LDA
 
 
 ```{r question1, message = FALSE, warning = FALSE, cache = TRUE}
@@ -275,7 +277,7 @@ question1 = classify_responses(question1)
 Interpretation: 
 The topics from this question are split fairly clearly between training and tools. Topic 1 discusses training and access to MS Office and additional software. Topic 2 details tools, like monitors, laptops, scanners, and other equipment that employees would appreciate access to. 
 
-#### Question 17 LDA
+### Question 17 LDA
 
 
 ```{r question2, message = FALSE, warning = FALSE, cache = TRUE}
@@ -287,7 +289,7 @@ question2 = classify_responses(question2)
 Interpretation: 
 This question is a great example of why LDA is not always useful, if there is only one topic of discussion. There is extreme overlap in these topics, indicating only one theme/topic for these responses. Based on the top words of both topics, it appears like there is a variety of preferred communication methods and that it may depend on the situation. 
 
-#### Question 19 LDA
+### Question 19 LDA
 
 
 ```{r question3, message = FALSE, warning = FALSE, cache = TRUE}
@@ -299,7 +301,7 @@ question3 = classify_responses(question3)
 Interpretation: 
 Here there appears to be two distinct topics. Topic 1 indicates that deadlines, workloads, and resources are an issue, whereas Topic 2 details wait times and decisions, as well as a lack of information. Management is also a large indicator in Topic 2, although it is unclear from this plot if that is referring to time management or senior management.
 
-#### Question 22 LDA
+### Question 22 LDA
 
 
 ```{r question4, message = FALSE, warning = FALSE, cache = TRUE}
@@ -311,7 +313,7 @@ question4 = classify_responses(question4)
 Interpretation:
 Topic 1 relates to policies dictating security and/or travel, in addition to information. Topic 2 indicates difficulties with requests, procurement, Winfast, and other systems.
 
-#### Question 23 LDA
+### Question 23 LDA
 
 
 ```{r question5, message = FALSE, warning = FALSE, cache = TRUE}
@@ -323,7 +325,7 @@ question5 = classify_responses(question5)
 Interpretation:
 Both of these topics are similar, however Topic 1 focuses more on providing information or services and Topic 2 focuses on pandemic support and security.
 
-#### Question 25 LDA
+### Question 25 LDA
 
 
 ```{r question6, message = FALSE, warning = FALSE, cache = TRUE}
@@ -335,7 +337,7 @@ question6 = classify_responses(question6)
 Interpretation:
 This again, like Question 17, appears to be a one topic question. Both topics detail answering questions or responding to requests in a timely manner.
 
-#### Question 27 LDA
+### Question 27 LDA
 
 
 ```{r question7, message = FALSE, warning = FALSE, cache = TRUE}
@@ -348,7 +350,8 @@ Interpretation:
 Topic 1 consists of staff support and quick responses, also with a focus on teams/coworkers, as team and staff are both mentioned. Topic 2 is similar but with more of a focus on security, although support and service are also mentioned. Like Topic 1, there is also a team focus, in addition to individual callouts shown as redacted. 
 
 
-#### Question 28 LDA
+### Question 28 LDA
+
 
 ```{r question8, message = FALSE, warning = FALSE, cache = TRUE}
 question8 = individual_question_LDA(28)
@@ -360,7 +363,8 @@ question8 = classify_responses(question8)
 Interpretation:
 Topic 1 relates to COVID-19 restrictions and the associated difficulties. Topic 2 details communication hardships when transitioning from in person communication to phone calls and MS Teams. 
 
-#### Ninth Question LDA
+### Ninth Question LDA
+
 
 ```{r question9, message = FALSE, warning = FALSE, cache = TRUE}
 
@@ -374,15 +378,15 @@ Once again, there is a clear split between these topics. Topic 1 focuses on the 
 
 ```{r, include = FALSE, message = FALSE, warning = FALSE}
 ## writing CSVs for further analysis with response ID/topic association
-write.csv(question1,file="Question 1 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question2,file="Question 2 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question3,file="Question 3 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question4,file="Question 4 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question5,file="Question 5 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question6,file="Question 6 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question7,file="Question 7 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question8,file="Question 8 Response Topics LDA.csv", row.names = FALSE)
-write.csv(question9,file="Question 9 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question1,file="Question 10 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question2,file="Question 17 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question3,file="Question 19 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question4,file="Question 22 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question5,file="Question 23 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question6,file="Question 25 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question7,file="Question 27 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question8,file="Question 28 Response Topics LDA.csv", row.names = FALSE)
+write.csv(question9,file="Question 30 Response Topics LDA.csv", row.names = FALSE)
 
 
 
@@ -390,30 +394,29 @@ write.csv(question9,file="Question 9 Response Topics LDA.csv", row.names = FALSE
 removed_missing_sd = survey_data %>% remove_missing(vars = "english")
 
 #finding uninformative answers that were lost to cleaning (ex. no, n/a, nope, etc.)
-missing1 = determine_missing_ans(question1, 1, removed_missing_sd)
-missing2 = determine_missing_ans(question2, 2, removed_missing_sd)
-missing3 = determine_missing_ans(question3, 3, removed_missing_sd)
-missing4 = determine_missing_ans(question4, 4, removed_missing_sd)
-missing5 = determine_missing_ans(question5, 5, removed_missing_sd)
-missing6 = determine_missing_ans(question6, 6, removed_missing_sd)
-missing7 = determine_missing_ans(question7, 7, removed_missing_sd)
-missing8 = determine_missing_ans(question8, 8, removed_missing_sd)
-missing9 = determine_missing_ans(question9, 9, removed_missing_sd)
+missing1 = determine_missing_ans(question1, 10, removed_missing_sd)
+missing2 = determine_missing_ans(question2, 17, removed_missing_sd)
+missing3 = determine_missing_ans(question3, 19, removed_missing_sd)
+missing4 = determine_missing_ans(question4, 22, removed_missing_sd)
+missing5 = determine_missing_ans(question5, 23, removed_missing_sd)
+missing6 = determine_missing_ans(question6, 25, removed_missing_sd)
+missing7 = determine_missing_ans(question7, 27, removed_missing_sd)
+missing8 = determine_missing_ans(question8, 28, removed_missing_sd)
+missing9 = determine_missing_ans(question9, 30, removed_missing_sd)
 
-write.csv(missing1,file="Question 1 Missing Responses.csv", row.names = FALSE)
-write.csv(missing2,file="Question 2 Missing Responses.csv", row.names = FALSE)
-write.csv(missing3,file="Question 3 Missing Responses.csv", row.names = FALSE)
-write.csv(missing4,file="Question 4 Missing Responses.csv", row.names = FALSE)
-write.csv(missing5,file="Question 5 Missing Responses.csv", row.names = FALSE)
-write.csv(missing6,file="Question 6 Missing Responses.csv", row.names = FALSE)
-write.csv(missing7,file="Question 7 Missing Responses.csv", row.names = FALSE)
-write.csv(missing8,file="Question 8 Missing Responses.csv", row.names = FALSE)
-write.csv(missing9,file="Question 9 Missing Responses.csv", row.names = FALSE)
+write.csv(missing1,file="Question 10 Missing Responses.csv", row.names = FALSE)
+write.csv(missing2,file="Question 17 Missing Responses.csv", row.names = FALSE)
+write.csv(missing3,file="Question 19 Missing Responses.csv", row.names = FALSE)
+write.csv(missing4,file="Question 22 Missing Responses.csv", row.names = FALSE)
+write.csv(missing5,file="Question 23 Missing Responses.csv", row.names = FALSE)
+write.csv(missing6,file="Question 25 Missing Responses.csv", row.names = FALSE)
+write.csv(missing7,file="Question 27 Missing Responses.csv", row.names = FALSE)
+write.csv(missing8,file="Question 28 Missing Responses.csv", row.names = FALSE)
+write.csv(missing9,file="Question 30 Missing Responses.csv", row.names = FALSE)
 ```
 
-### Section 3-5: Limitations of LDA
+## Section 3-5: Limitations of LDA
 
 LDA is better suited towards large documents, meaning it is not an ideal clustering algorithm for the short answers commonly seen in surveys. This is not a large concern here, as it still produced reasonable results and these results are being compared to the results of the LSA and word2vec clustering as well. Also, as seen in some of the interpretations, it cannot have less than two topics which clutters and unnecessarily splits a group of responses with a single theme. 
 
 In addition, LDA does not account for sentiment, as it is a topic modelling method. This affects the above analysis as we cannot see the intention behind this topic. This could allow for many responses discussing the same topic with both positive and negative feelings about it being grouped together. To account for this, these topic clusters, as well as the results from LSA and word2vec clustering, are being used in tandem with sentiment analysis (see Chapter 5) to provide a complete picture of the data.
-
